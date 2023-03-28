@@ -30,7 +30,6 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-
 //******************************************************************************
 // Defines
 //******************************************************************************
@@ -43,17 +42,29 @@ void TMR0_Config(void);
 //******************************************************************************
 // Variables
 //******************************************************************************
-uint8_t TM0_Pre = 61;
-
+uint8_t  TM0_Pre = 61;
+uint16_t ADC1 = 0;
+uint16_t ADC2 = 0;
+uint8_t  Numero = 0;
+bool     adc_flag = false;
 //******************************************************************************
 // Interrupciones
 //******************************************************************************
 void __interrupt() isr(void)
 {
-    if (T0IF)
-    {
-        RB0 = !RB0;
-        T0IF = 0;
+    T0IF = 0;
+    if (ADIF)
+    {       
+        if (adc_flag)
+        {
+            ADC1 = ADRESH;
+        }
+        else
+        {
+            ADC2 = ADRESH;
+        }
+        ADIF = 0;
+        adc_flag = !adc_flag;
     }
 }
 
@@ -62,23 +73,25 @@ void __interrupt() isr(void)
 //******************************************************************************
 void Setup(void)
 {
-    ANSEL = 0;
-    ANSELH = 0; 
-    
+    ANSEL  = 0x03;
+    ANSELH = 0x00;   
+    TRISA = 0x03;
     TRISB = 0;
     PORTB = 0;
     TRISC = 0;
     PORTC = 0;
-   
-    return;
+    TRISD = 0;
+    PORTD = 0;
 }
 
 void Int_Enable(void)
 {
     T0IF = 0;
-    T0IE = 1;
-    GIE = 1;
-    return;
+    T0IE = 1;   //Habilitar interrupciones TMR0
+    ADIF = 0;
+    ADIE = 1;   //Habilitar interrupciones ADC
+    PEIE = 1;   //Habilitar interrupciones Perifericas
+    GIE = 1;    //Habilitar interrupciones Globales
 }
 
 void TMR0_Config(void)
@@ -90,8 +103,42 @@ void TMR0_Config(void)
     PS0 = 1;
     TMR0 = 61;
     T0IF = 0;
-    return;
 }
+
+void ADC_Int()
+{
+    ADCON0 = 0b10000001;
+    ADCON1bits.ADFM  = 0;
+    ADCON1bits.VCFG1 = 0;
+    ADCON1bits.VCFG0 = 0;
+}
+
+void ADC_Select(int channel)
+{
+    ADCON0bits.CHS0 = (channel >> 0) & 0x01;
+    ADCON0bits.CHS1 = (channel >> 1) & 0x01;
+    ADCON0bits.CHS2 = (channel >> 2) & 0x01;
+    ADCON0bits.CHS3 = (channel >> 3) & 0x01;
+}
+
+void ADC_Change(void)
+{
+    if (ADCON0bits.GO)
+    {
+        return;
+    }
+    if (adc_flag)
+    {
+        ADC_Select(0);
+    }
+    else
+    {
+        ADC_Select(1);
+    }
+    while(ADCON0bits.GO);
+    ADCON0bits.GO = 1;
+}
+
 
 //******************************************************************************
 // Loop
@@ -102,38 +149,13 @@ void main(void)
     Int_Enable();
     TMR0_Config();
     
+    ADC_Int();
+    
     while(1)
     {
-
+        ADC_Change();
+        PORTB = ADC1;
+        PORTD = ADC2;
     }
     return;
 }
-
-/*
-void ADC_Init(void) 
-  {
-    ADCON0bits.ADON = 1; 
-    ADCON1bits.ADFM = 1; 
-    ADCON1bits.VCFG0 = 0;
-    ADCON1bits.VCFG1 = 0; 
-    ADCON0bits.CHS = 0; 
-}
-
-int ADC_Read(int channel) 
- {
-    ADCON0bits.CHS = channel; 
-    ADCON0bits.GO = 1; 
-    while (ADCON0bits.GO);
-    return ((ADRESH << 8) + ADRESL); 
-}
-
-void main(void) 
-   {
-    ADC_Init(); 
-    int valor_adc; 
-    while(1) 
-   { 
-        valor_adc = ADC_Read(0);   
-   }
-}
- */

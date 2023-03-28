@@ -2765,7 +2765,6 @@ extern int printf(const char *, ...);
 
 
 
-
 void Setup(void);
 void Int_Enable(void);
 void TMR0_Config(void);
@@ -2774,16 +2773,28 @@ void TMR0_Config(void);
 
 
 uint8_t TM0_Pre = 61;
-
+uint16_t ADC1 = 0;
+uint16_t ADC2 = 0;
+uint8_t Numero = 0;
+_Bool adc_flag = 0;
 
 
 
 void __attribute__((picinterrupt(("")))) isr(void)
 {
-    if (T0IF)
+    T0IF = 0;
+    if (ADIF)
     {
-        RB0 = !RB0;
-        T0IF = 0;
+        if (adc_flag)
+        {
+            ADC1 = ADRESH;
+        }
+        else
+        {
+            ADC2 = ADRESH;
+        }
+        ADIF = 0;
+        adc_flag = !adc_flag;
     }
 }
 
@@ -2792,23 +2803,25 @@ void __attribute__((picinterrupt(("")))) isr(void)
 
 void Setup(void)
 {
-    ANSEL = 0;
-    ANSELH = 0;
-
+    ANSEL = 0x03;
+    ANSELH = 0x00;
+    TRISA = 0x03;
     TRISB = 0;
     PORTB = 0;
     TRISC = 0;
     PORTC = 0;
-
-    return;
+    TRISD = 0;
+    PORTD = 0;
 }
 
 void Int_Enable(void)
 {
     T0IF = 0;
     T0IE = 1;
+    ADIF = 0;
+    ADIE = 1;
+    PEIE = 1;
     GIE = 1;
-    return;
 }
 
 void TMR0_Config(void)
@@ -2820,8 +2833,42 @@ void TMR0_Config(void)
     PS0 = 1;
     TMR0 = 61;
     T0IF = 0;
-    return;
 }
+
+void ADC_Int()
+{
+    ADCON0 = 0b10000001;
+    ADCON1bits.ADFM = 0;
+    ADCON1bits.VCFG1 = 0;
+    ADCON1bits.VCFG0 = 0;
+}
+
+void ADC_Select(int channel)
+{
+    ADCON0bits.CHS0 = (channel >> 0) & 0x01;
+    ADCON0bits.CHS1 = (channel >> 1) & 0x01;
+    ADCON0bits.CHS2 = (channel >> 2) & 0x01;
+    ADCON0bits.CHS3 = (channel >> 3) & 0x01;
+}
+
+void ADC_Change(void)
+{
+    if (ADCON0bits.GO)
+    {
+        return;
+    }
+    if (adc_flag)
+    {
+        ADC_Select(0);
+    }
+    else
+    {
+        ADC_Select(1);
+    }
+    while(ADCON0bits.GO);
+    ADCON0bits.GO = 1;
+}
+
 
 
 
@@ -2832,9 +2879,13 @@ void main(void)
     Int_Enable();
     TMR0_Config();
 
+    ADC_Int();
+
     while(1)
     {
-
+        ADC_Change();
+        PORTB = ADC1;
+        PORTD = ADC2;
     }
     return;
 }
