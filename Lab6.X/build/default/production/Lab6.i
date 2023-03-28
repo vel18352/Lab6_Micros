@@ -7,12 +7,7 @@
 # 1 "C:/Program Files/Microchip/MPLABX/v6.00/packs/Microchip/PIC16Fxxx_DFP/1.3.42/xc8\\pic\\include\\language_support.h" 1 3
 # 2 "<built-in>" 2
 # 1 "Lab6.c" 2
-
-
-
-
-
-
+# 17 "Lab6.c"
 #pragma config FOSC = INTRC_NOCLKOUT
 #pragma config WDTE = OFF
 #pragma config PWRTE = OFF
@@ -24,10 +19,8 @@
 #pragma config FCMEN = OFF
 #pragma config LVP = OFF
 
-
 #pragma config BOR4V = BOR40V
 #pragma config WRT = OFF
-
 
 
 
@@ -2652,7 +2645,7 @@ extern __bank0 unsigned char __resetbits;
 extern __bank0 __bit __powerdown;
 extern __bank0 __bit __timeout;
 # 29 "C:/Program Files/Microchip/MPLABX/v6.00/packs/Microchip/PIC16Fxxx_DFP/1.3.42/xc8\\pic\\include\\xc.h" 2 3
-# 28 "Lab6.c" 2
+# 36 "Lab6.c" 2
 
 # 1 "C:\\Program Files\\Microchip\\xc8\\v2.40\\pic\\include\\c90\\stdio.h" 1 3
 
@@ -2751,41 +2744,81 @@ extern int vsscanf(const char *, const char *, va_list) __attribute__((unsupport
 #pragma printf_check(sprintf) const
 extern int sprintf(char *, const char *, ...);
 extern int printf(const char *, ...);
-# 29 "Lab6.c" 2
+# 37 "Lab6.c" 2
 
 # 1 "C:\\Program Files\\Microchip\\xc8\\v2.40\\pic\\include\\c90\\stdint.h" 1 3
-# 30 "Lab6.c" 2
+# 38 "Lab6.c" 2
 
 # 1 "C:\\Program Files\\Microchip\\xc8\\v2.40\\pic\\include\\c90\\stdbool.h" 1 3
-# 31 "Lab6.c" 2
-
-
-
-
-
-
-
-void Setup(void);
-void Int_Enable(void);
-void TMR0_Config(void);
-
-
-
-
-uint8_t TM0_Pre = 61;
+# 39 "Lab6.c" 2
+# 49 "Lab6.c"
+uint8_t TMR0_Pre = 255;
 uint16_t ADC1 = 0;
 uint16_t ADC2 = 0;
-uint8_t Numero = 0;
-_Bool adc_flag = 0;
+_Bool Bandera_ADC = 0;
+uint8_t Bandera_Display;
+uint8_t Miles = 0;
+uint8_t Centenas = 0;
+uint8_t Decenas = 0;
+uint8_t Unidades = 0;
+uint16_t ValorDC = 0;
+uint8_t Tabla_Display[10] =
+{
+    0xC0,
+    0xF9,
+    0x24,
+    0x30,
+    0x19,
+    0x12,
+    0x02,
+    0xF8,
+    0x00,
+    0x10
+};
+
 
 
 
 void __attribute__((picinterrupt(("")))) isr(void)
 {
-    T0IF = 0;
+    if (T0IF)
+    {
+    PORTC = 0x00;
+    if(Bandera_Display == 0)
+    {
+        PORTD = Tabla_Display[0];
+        PORTC = 0x01;
+        RD7 = 1;
+        Bandera_Display = 1;
+    }
+    else if(Bandera_Display == 1)
+    {
+        PORTD = Tabla_Display[Centenas];
+        PORTC = 0x02;
+        RD7 = 0;
+        Bandera_Display = 2;
+    }
+    else if(Bandera_Display == 2)
+    {
+        PORTD = Tabla_Display[Decenas];
+        PORTC = 0x04;
+        RD7 = 1;
+        Bandera_Display = 3;
+    }
+    else if(Bandera_Display == 3)
+    {
+        PORTD = Tabla_Display[Unidades];
+        PORTC = 0x08;
+        RD7 = 1;
+        Bandera_Display = 0;
+    }
+       T0IF = 0;
+       TMR0 = TMR0_Pre;
+    }
+
     if (ADIF)
     {
-        if (adc_flag)
+        if (Bandera_ADC)
         {
             ADC1 = ADRESH;
         }
@@ -2794,7 +2827,7 @@ void __attribute__((picinterrupt(("")))) isr(void)
             ADC2 = ADRESH;
         }
         ADIF = 0;
-        adc_flag = !adc_flag;
+        Bandera_ADC = !Bandera_ADC;
     }
 }
 
@@ -2806,6 +2839,7 @@ void Setup(void)
     ANSEL = 0x03;
     ANSELH = 0x00;
     TRISA = 0x03;
+    PORTA = 0;
     TRISB = 0;
     PORTB = 0;
     TRISC = 0;
@@ -2831,7 +2865,7 @@ void TMR0_Config(void)
     PS2 = 1;
     PS1 = 1;
     PS0 = 1;
-    TMR0 = 61;
+    TMR0 = TMR0_Pre;
     T0IF = 0;
 }
 
@@ -2851,13 +2885,16 @@ void ADC_Select(int channel)
     ADCON0bits.CHS3 = (channel >> 3) & 0x01;
 }
 
+
+
+
 void ADC_Change(void)
 {
     if (ADCON0bits.GO)
     {
         return;
     }
-    if (adc_flag)
+    if (Bandera_ADC)
     {
         ADC_Select(0);
     }
@@ -2869,6 +2906,13 @@ void ADC_Change(void)
     ADCON0bits.GO = 1;
 }
 
+void Separar_Valores(int Valor)
+{
+    Centenas=(Valor%1000-Valor%100)/100;
+    Decenas=(Valor%100-Valor%10)/10;
+    Unidades=Valor%10;
+    return;
+}
 
 
 
@@ -2878,14 +2922,13 @@ void main(void)
     Setup();
     Int_Enable();
     TMR0_Config();
-
     ADC_Int();
-
     while(1)
     {
         ADC_Change();
         PORTB = ADC1;
-        PORTD = ADC2;
+        ValorDC = (uint16_t)((uint32_t)ADC2 * 500 / 255);
+        Separar_Valores(ValorDC);
     }
     return;
 }
